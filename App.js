@@ -53,6 +53,8 @@ export default function App() {
   
   const [showImageViewer, setShowImageViewer] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  const [showAutocomplete, setShowAutocomplete] = useState(false);
+  const [autocompleteSuggestions, setAutocompleteSuggestions] = useState([]);
 
   const theme = THEMES[currentTheme];
 
@@ -143,6 +145,27 @@ export default function App() {
 
   const handleRecentSearch = (term) => {
     setSearchText(term);
+    setShowAutocomplete(false);
+  };
+
+  const handleSearchTextChange = (text) => {
+    setSearchText(text);
+    
+    // Show autocomplete if they've typed 2+ characters
+    if (text.length >= 2) {
+      const suggestions = getSearchSuggestions(text);
+      setAutocompleteSuggestions(suggestions);
+      setShowAutocomplete(suggestions.length > 0);
+    } else {
+      setShowAutocomplete(false);
+    }
+  };
+
+  const handleSuggestionPress = (suggestion) => {
+    setSearchText(suggestion);
+    setShowAutocomplete(false);
+    // Optionally auto-search when they pick a suggestion
+    // handleSearch() with the suggestion
   };
 
   const handleTabPress = (tab) => {
@@ -378,8 +401,19 @@ export default function App() {
                   placeholder="What do you want to explore?"
                   placeholderTextColor="#9ca3af"
                   value={searchText}
-                  onChangeText={setSearchText}
+                  onChangeText={handleSearchTextChange}
                   onSubmitEditing={handleSearch}
+                  onFocus={() => {
+                    if (searchText.length >= 2) {
+                      const suggestions = getSearchSuggestions(searchText);
+                      setAutocompleteSuggestions(suggestions);
+                      setShowAutocomplete(suggestions.length > 0);
+                    }
+                  }}
+                  onBlur={() => {
+                    // Delay hiding to allow suggestion clicks
+                    setTimeout(() => setShowAutocomplete(false), 200);
+                  }}
                   returnKeyType="search"
                   autoCapitalize="none"
                   autoCorrect={false}
@@ -393,6 +427,22 @@ export default function App() {
                 </TouchableOpacity>
               </View>
             </View>
+
+            {/* Autocomplete Suggestions */}
+            {showAutocomplete && autocompleteSuggestions.length > 0 && (
+              <View style={styles.autocompleteContainer}>
+                {autocompleteSuggestions.map((suggestion, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={styles.suggestionItem}
+                    onPress={() => handleSuggestionPress(suggestion)}
+                  >
+                    <Text style={styles.suggestionIcon}>🔍</Text>
+                    <Text style={styles.suggestionText}>{suggestion}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
 
             {recentSearches.length > 0 && (
               <View style={styles.recentContainer}>
@@ -703,6 +753,32 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 16,
     textAlign: 'center',
+    fontWeight: '500',
+  },
+  autocompleteContainer: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    marginTop: 8,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+  },
+  suggestionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  suggestionIcon: {
+    fontSize: 18,
+    marginRight: 12,
+  },
+  suggestionText: {
+    fontSize: 16,
+    color: '#1f2937',
     fontWeight: '500',
   },
   loadingContainer: {
