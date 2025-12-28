@@ -16,8 +16,9 @@ import {
   Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { searchImages } from './services/pexelsAPI';
+import { searchImages } from './services/pixabayAPI';
 import { THEMES } from './config/constants';
+import { isSearchTermSafe, getSearchSuggestions } from './services/contentFilter';
 
 const { width } = Dimensions.get('window');
 const LOADING_PHRASES = [
@@ -65,6 +66,14 @@ export default function App() {
   const handleSearch = async () => {
     if (searchText.trim()) {
       const term = searchText.trim();
+      
+      // Check if search term is safe
+      if (!isSearchTermSafe(term)) {
+        alert('⚠️ Please try a different search term!');
+        setSearchText('');
+        return;
+      }
+      
       setCurrentSearchTerm(term);
       setLoading(true);
       setError(null);
@@ -78,14 +87,27 @@ export default function App() {
       try {
         if (activeTab === 'pictures') {
           const result = await searchImages(term, 1);
-          setImages(result.images);
-          setHasMore(result.hasMore);
-          setScreen('results');
+          
+          // If we got results but they were all filtered
+          if (result.images.length === 0 && result.filteredCount > 0) {
+            setError('All results were filtered for safety. Try a different search!');
+            setScreen('home');
+          } else if (result.images.length === 0) {
+            // No results at all - show suggestions
+            const suggestions = getSearchSuggestions(term);
+            setError(`No images found for "${term}". Try: ${suggestions.slice(0, 3).join(', ')}`);
+            setScreen('home');
+          } else {
+            setImages(result.images);
+            setHasMore(result.hasMore);
+            setScreen('results');
+          }
         } else {
           alert(`${activeTab} coming soon! 🎉`);
         }
       } catch (err) {
         setError(err.message);
+        setScreen('home');
       } finally {
         setLoading(false);
         setSearchText('');
@@ -259,13 +281,14 @@ export default function App() {
           <View style={styles.imageViewerContainer}>
             <StatusBar barStyle="light-content" backgroundColor="#000000" />
             
-            <TouchableOpacity 
-              style={styles.closeViewerButton}
-              onPress={handleCloseImageViewer}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.closeViewerText}>✕ Close</Text>
-            </TouchableOpacity>
+            <SafeAreaView style={styles.imageViewerSafe}>
+              <TouchableOpacity 
+                style={styles.closeViewerButton}
+                onPress={handleCloseImageViewer}
+              >
+                <Text style={styles.closeViewerText}>✕</Text>
+              </TouchableOpacity>
+            </SafeAreaView>
 
             <View style={styles.imageCounter}>
               <Text style={styles.imageCounterText}>
@@ -565,15 +588,9 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#ffffff',
     marginBottom: 8,
-    textShadowColor: 'rgba(0, 0, 0, 0.3)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 4,
   },
   tagline: {
     fontSize: 16,
-    textShadowColor: 'rgba(0, 0, 0, 0.2)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
   },
   searchWrapper: {
     position: 'relative',
@@ -586,9 +603,6 @@ const styles = StyleSheet.create({
     bottom: -8,
     opacity: 0.2,
     borderRadius: 33,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
   },
   searchContainer: {
     flexDirection: 'row',
@@ -598,11 +612,6 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     alignItems: 'center',
     borderWidth: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
   },
   searchInput: {
     flex: 1,
@@ -623,9 +632,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     marginBottom: 12,
-    textShadowColor: 'rgba(0, 0, 0, 0.3)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
   },
   recentBubbles: {
     flexDirection: 'row',
@@ -650,9 +656,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     marginBottom: 12,
-    textShadowColor: 'rgba(0, 0, 0, 0.3)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
   },
   tabs: {
     flexDirection: 'row',
@@ -668,10 +671,6 @@ const styles = StyleSheet.create({
   tabActive: {
     backgroundColor: '#ffffff',
     borderWidth: 2,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 8,
-    elevation: 4,
   },
   tabText: {
     color: '#ffffff',
@@ -691,9 +690,20 @@ const styles = StyleSheet.create({
   },
   footerText: {
     fontSize: 12,
-    textShadowColor: 'rgba(0, 0, 0, 0.3)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
+  },
+  homeErrorContainer: {
+    backgroundColor: 'rgba(220, 38, 38, 0.3)',
+    padding: 15,
+    borderRadius: 12,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(220, 38, 38, 0.5)',
+  },
+  homeErrorText: {
+    color: '#ffffff',
+    fontSize: 16,
+    textAlign: 'center',
+    fontWeight: '500',
   },
   loadingContainer: {
     flex: 1,
@@ -813,26 +823,30 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000000',
   },
-  closeViewerButton: {
+  imageViewerSafe: {
     position: 'absolute',
-    top: 50,
-    right: 20,
-    zIndex: 10,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 25,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    top: 0,
+    right: 0,
+    zIndex: 100,
+  },
+  closeViewerButton: {
+    margin: 20,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   closeViewerText: {
     color: '#ffffff',
-    fontSize: 18,
+    fontSize: 36,
     fontWeight: 'bold',
+    lineHeight: 36,
   },
   imageCounter: {
     position: 'absolute',
-    top: 50,
+    top: 40,
     left: 0,
     right: 0,
     zIndex: 10,

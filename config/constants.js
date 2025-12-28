@@ -1,5 +1,6 @@
 // API Keys
 export const PEXELS_API_KEY = 'I9Dh87Xwd1D7tlPBCAQTQOFbAVRywDyr7oXNwKDWxfyMD79sGnqs7uR5';
+export const PIXABAY_API_KEY = '53941125-a3dc51af4b369ea9ecfb038f2';
 
 // Feature Flags (for future premium features)
 export const FEATURES = {
