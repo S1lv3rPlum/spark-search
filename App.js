@@ -34,7 +34,7 @@ const LOADING_PHRASES = [
 ];
 
 export default function App() {
-  const [screen, setScreen] = useState('home'); // 'home' or 'results'
+  const [screen, setScreen] = useState('home');
   const [searchText, setSearchText] = useState('');
   const [currentSearchTerm, setCurrentSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('pictures');
@@ -42,7 +42,6 @@ export default function App() {
   const [showThemeModal, setShowThemeModal] = useState(false);
   const [recentSearches, setRecentSearches] = useState(['unicorns', 'dinosaurs', 'puppies']);
   
-  // Results screen state
   const [images, setImages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadingPhrase, setLoadingPhrase] = useState('');
@@ -50,10 +49,12 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  
+  const [showImageViewer, setShowImageViewer] = useState(false);
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
 
   const theme = THEMES[currentTheme];
 
-  // Rotate loading phrases
   useEffect(() => {
     if (loading) {
       const randomPhrase = LOADING_PHRASES[Math.floor(Math.random() * LOADING_PHRASES.length)];
@@ -70,20 +71,17 @@ export default function App() {
       setCurrentPage(1);
       setHasMore(true);
       
-      // Add to recent searches
       if (!recentSearches.includes(term)) {
         setRecentSearches([term, ...recentSearches.slice(0, 4)]);
       }
 
       try {
-        // Fetch images based on active tab
         if (activeTab === 'pictures') {
           const result = await searchImages(term, 1);
           setImages(result.images);
           setHasMore(result.hasMore);
           setScreen('results');
         } else {
-          // Videos and Songs not implemented yet
           alert(`${activeTab} coming soon! 🎉`);
         }
       } catch (err) {
@@ -143,11 +141,27 @@ export default function App() {
   };
 
   const handleImagePress = (image) => {
-    // TODO: Open full screen image view
-    console.log('Image pressed:', image.id);
+    const index = images.findIndex(img => img.id === image.id);
+    setSelectedImageIndex(index);
+    setShowImageViewer(true);
   };
 
-  // Loading Screen
+  const handleCloseImageViewer = () => {
+    setShowImageViewer(false);
+  };
+
+  const handleNextImage = () => {
+    if (selectedImageIndex < images.length - 1) {
+      setSelectedImageIndex(selectedImageIndex + 1);
+    }
+  };
+
+  const handlePreviousImage = () => {
+    if (selectedImageIndex > 0) {
+      setSelectedImageIndex(selectedImageIndex - 1);
+    }
+  };
+
   if (loading) {
     return (
       <View style={styles.container}>
@@ -163,7 +177,6 @@ export default function App() {
     );
   }
 
-  // Results Screen
   if (screen === 'results') {
     return (
       <View style={styles.container}>
@@ -171,7 +184,6 @@ export default function App() {
           <SafeAreaView style={styles.safeArea}>
             <StatusBar barStyle="light-content" backgroundColor={theme.gradient[0]} />
             
-            {/* Results Header */}
             <View style={styles.resultsHeader}>
               <TouchableOpacity onPress={handleBackToHome} style={styles.backButton}>
                 <Text style={styles.backButtonText}>← Back</Text>
@@ -181,14 +193,12 @@ export default function App() {
               </Text>
             </View>
 
-            {/* Error Message */}
             {error && (
               <View style={styles.errorContainer}>
                 <Text style={styles.errorText}>😕 {error}</Text>
               </View>
             )}
 
-            {/* Image Grid */}
             <ScrollView 
               style={styles.resultsScroll} 
               contentContainerStyle={styles.resultsContent}
@@ -220,7 +230,6 @@ export default function App() {
                     ))}
                   </View>
                   
-                  {/* Loading More Indicator */}
                   {loadingMore && (
                     <View style={styles.loadingMoreContainer}>
                       <ActivityIndicator size="small" color="#ffffff" />
@@ -228,7 +237,6 @@ export default function App() {
                     </View>
                   )}
                   
-                  {/* End of Results */}
                   {!hasMore && images.length > 0 && (
                     <View style={styles.endOfResults}>
                       <Text style={styles.endOfResultsText}>
@@ -241,18 +249,81 @@ export default function App() {
             </ScrollView>
           </SafeAreaView>
         </LinearGradient>
+        
+        <Modal
+          visible={showImageViewer}
+          transparent={false}
+          animationType="fade"
+          onRequestClose={handleCloseImageViewer}
+        >
+          <View style={styles.imageViewerContainer}>
+            <StatusBar barStyle="light-content" backgroundColor="#000000" />
+            
+            <TouchableOpacity 
+              style={styles.closeViewerButton}
+              onPress={handleCloseImageViewer}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.closeViewerText}>✕ Close</Text>
+            </TouchableOpacity>
+
+            <View style={styles.imageCounter}>
+              <Text style={styles.imageCounterText}>
+                {selectedImageIndex + 1} / {images.length}
+              </Text>
+            </View>
+
+            <ScrollView
+              style={styles.imageScrollView}
+              contentContainerStyle={styles.imageScrollContent}
+              maximumZoomScale={3}
+              minimumZoomScale={1}
+              showsHorizontalScrollIndicator={false}
+              showsVerticalScrollIndicator={false}
+              centerContent
+            >
+              <Image
+                source={{ uri: images[selectedImageIndex]?.url }}
+                style={styles.fullScreenImage}
+                resizeMode="contain"
+              />
+            </ScrollView>
+
+            <View style={styles.imageNavigation}>
+              <TouchableOpacity
+                style={[
+                  styles.navButton,
+                  selectedImageIndex === 0 && styles.navButtonDisabled
+                ]}
+                onPress={handlePreviousImage}
+                disabled={selectedImageIndex === 0}
+              >
+                <Text style={styles.navButtonText}>←</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.navButton,
+                  selectedImageIndex === images.length - 1 && styles.navButtonDisabled
+                ]}
+                onPress={handleNextImage}
+                disabled={selectedImageIndex === images.length - 1}
+              >
+                <Text style={styles.navButtonText}>→</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       </View>
     );
   }
 
-  // Home Screen
   return (
     <View style={styles.container}>
       <LinearGradient colors={theme.gradient} style={styles.gradient}>
         <SafeAreaView style={styles.safeArea}>
           <StatusBar barStyle="light-content" backgroundColor={theme.gradient[0]} />
           
-          {/* Theme Selector Button */}
           <View style={styles.topBar}>
             <TouchableOpacity
               style={[styles.themeButton, { borderColor: theme.accent }]}
@@ -266,7 +337,6 @@ export default function App() {
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={styles.content}
           >
-            {/* Header */}
             <View style={styles.header}>
               <Text style={styles.logo}>✨ Spark Search ✨</Text>
               <Text style={[styles.tagline, { color: theme.accentLight }]}>
@@ -274,7 +344,6 @@ export default function App() {
               </Text>
             </View>
 
-            {/* Search Bar */}
             <View style={styles.searchWrapper}>
               <View style={[styles.searchGlow, { 
                 backgroundColor: theme.accent,
@@ -302,7 +371,6 @@ export default function App() {
               </View>
             </View>
 
-            {/* Recent Searches */}
             {recentSearches.length > 0 && (
               <View style={styles.recentContainer}>
                 <Text style={[styles.recentTitle, { color: theme.accentLight }]}>
@@ -325,7 +393,6 @@ export default function App() {
               </View>
             )}
 
-            {/* Content Type Tabs */}
             <View style={styles.tabsContainer}>
               <Text style={[styles.tabsTitle, { color: theme.accentLight }]}>
                 ✨ Search for:
@@ -400,7 +467,6 @@ export default function App() {
               </View>
             </View>
 
-            {/* Footer */}
             <View style={styles.footer}>
               <Text style={[styles.footerText, { color: theme.accentLight }]}>
                 ✨ Made by Data Forge Apps ✨
@@ -410,7 +476,6 @@ export default function App() {
         </SafeAreaView>
       </LinearGradient>
 
-      {/* Theme Selection Modal */}
       <Modal
         visible={showThemeModal}
         transparent={true}
@@ -630,7 +695,6 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
   },
-  // Loading Screen
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -654,7 +718,6 @@ const styles = StyleSheet.create({
     marginTop: 10,
     textAlign: 'center',
   },
-  // Results Screen
   resultsHeader: {
     paddingHorizontal: 20,
     paddingVertical: 15,
@@ -746,7 +809,81 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'center',
   },
-  // Theme Modal
+  imageViewerContainer: {
+    flex: 1,
+    backgroundColor: '#000000',
+  },
+  closeViewerButton: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    zIndex: 10,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 25,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  closeViewerText: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  imageCounter: {
+    position: 'absolute',
+    top: 50,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+    alignItems: 'center',
+  },
+  imageCounterText: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: '600',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  imageScrollView: {
+    flex: 1,
+  },
+  imageScrollContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullScreenImage: {
+    width: width,
+    height: '100%',
+  },
+  imageNavigation: {
+    position: 'absolute',
+    bottom: 50,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 40,
+  },
+  navButton: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  navButtonDisabled: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  navButtonText: {
+    color: '#ffffff',
+    fontSize: 30,
+    fontWeight: 'bold',
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
