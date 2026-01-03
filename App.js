@@ -71,8 +71,11 @@ export default function App() {
   }, [loading]);
 
   const handleSearch = async () => {
-    if (searchText.trim()) {
-      const term = searchText.trim();
+  if (searchText.trim()) {
+    const term = searchText.trim();
+    
+    console.log('🔍 Search started:', { term, activeTab });
+      
       
       // Check if search term is safe
       if (!isSearchTermSafe(term)) {
@@ -103,6 +106,23 @@ export default function App() {
             // No results at all - show suggestions
             const suggestions = getSearchSuggestions(term);
             setError(`No images found for "${term}". Try: ${suggestions.slice(0, 3).join(', ')}`);
+            setScreen('home');
+          } else {
+            setImages(result.images);
+            setHasMore(result.hasMore);
+            setScreen('results');
+          }
+        } else if (activeTab === 'coloring') {
+          console.log('🖍️ Searching for coloring pages...');
+          const result = await searchColoringPages(term, 1);
+          console.log('🖍️ Result:', result);
+          
+          if (result.images.length === 0 && result.filteredCount > 0) {
+            setError('All results were filtered for safety. Try a different search!');
+            setScreen('home');
+          } else if (result.images.length === 0) {
+            const suggestions = getSearchSuggestions(term);
+            setError(`No coloring pages found for "${term}". Try: ${suggestions.slice(0, 3).join(', ')}`);
             setScreen('home');
           } else {
             setImages(result.images);
