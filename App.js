@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { searchImages } from './services/pixabayAPI';
+import { searchColoringPages } from './services/coloringAPI';
 import { THEMES } from './config/constants';
 import { isSearchTermSafe, getSearchSuggestions } from './services/contentFilter';
 
@@ -55,6 +56,10 @@ export default function App() {
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [showAutocomplete, setShowAutocomplete] = useState(false);
   const [autocompleteSuggestions, setAutocompleteSuggestions] = useState([]);
+  
+  // Coloring page state
+  const [showColoringCanvas, setShowColoringCanvas] = useState(false);
+  const [selectedColoringImage, setSelectedColoringImage] = useState(null);
 
   const theme = THEMES[currentTheme];
 
@@ -123,10 +128,19 @@ export default function App() {
     setLoadingMore(true);
     try {
       const nextPage = currentPage + 1;
-      const result = await searchImages(currentSearchTerm, nextPage);
-      setImages([...images, ...result.images]);
-      setCurrentPage(nextPage);
-      setHasMore(result.hasMore);
+      let result;
+      
+      if (activeTab === 'pictures') {
+        result = await searchImages(currentSearchTerm, nextPage);
+      } else if (activeTab === 'coloring') {
+        result = await searchColoringPages(currentSearchTerm, nextPage);
+      }
+      
+      if (result) {
+        setImages([...images, ...result.images]);
+        setCurrentPage(nextPage);
+        setHasMore(result.hasMore);
+      }
     } catch (err) {
       console.error('Error loading more images:', err);
     } finally {
@@ -170,6 +184,8 @@ export default function App() {
 
   const handleTabPress = (tab) => {
     setActiveTab(tab);
+    // Clear autocomplete when switching tabs
+    setShowAutocomplete(false);
   };
 
   const handleThemeChange = (themeName) => {
@@ -186,9 +202,21 @@ export default function App() {
   };
 
   const handleImagePress = (image) => {
-    const index = images.findIndex(img => img.id === image.id);
-    setSelectedImageIndex(index);
-    setShowImageViewer(true);
+    // If it's a coloring page, open coloring canvas
+    if (activeTab === 'coloring' || image.isColoringPage) {
+      setSelectedColoringImage(image);
+      setShowColoringCanvas(true);
+    } else {
+      // Regular image viewer
+      const index = images.findIndex(img => img.id === image.id);
+      setSelectedImageIndex(index);
+      setShowImageViewer(true);
+    }
+  };
+
+  const handleCloseColoringCanvas = () => {
+    setShowColoringCanvas(false);
+    setSelectedColoringImage(null);
   };
 
   const handleCloseImageViewer = () => {
@@ -360,6 +388,62 @@ export default function App() {
             </View>
           </View>
         </Modal>
+        
+        {/* Coloring Canvas Modal */}
+        <Modal
+          visible={showColoringCanvas}
+          transparent={false}
+          animationType="slide"
+          onRequestClose={handleCloseColoringCanvas}
+        >
+          <View style={styles.coloringContainer}>
+            <StatusBar barStyle="light-content" backgroundColor="#000000" />
+            
+            <SafeAreaView style={styles.coloringHeader}>
+              <TouchableOpacity 
+                style={styles.coloringCloseButton}
+                onPress={handleCloseColoringCanvas}
+              >
+                <Text style={styles.closeViewerText}>✕</Text>
+              </TouchableOpacity>
+              <Text style={styles.coloringTitle}>🎨 Color Me!</Text>
+            </SafeAreaView>
+
+            {/* Coloring Image */}
+            <View style={styles.coloringImageContainer}>
+              <Image
+                source={{ uri: selectedColoringImage?.url }}
+                style={styles.coloringImage}
+                resizeMode="contain"
+              />
+            </View>
+
+            {/* Color Palette */}
+            <View style={styles.colorPalette}>
+              <Text style={styles.paletteTitle}>Pick a Color:</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={styles.colorRow}>
+                  {[
+                    '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A',
+                    '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E2',
+                    '#F8B4D9', '#B4E7CE', '#FFB6B9', '#A8E6CF',
+                    '#FFDAC1', '#FF8B94', '#C7CEEA', '#B5EAD7',
+                  ].map((color, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      style={[styles.colorButton, { backgroundColor: color }]}
+                    >
+                      <Text style={styles.colorEmoji}>✓</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
+              <Text style={styles.comingSoonText}>
+                🎨 Full coloring tools coming soon! Tap colors to preview.
+              </Text>
+            </View>
+          </View>
+        </Modal>
       </View>
     );
   }
@@ -491,6 +575,28 @@ export default function App() {
                     }
                   ]}>
                     🖼️ Pictures
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.tab,
+                    { backgroundColor: theme.buttonBg, borderColor: theme.tabBorder },
+                    activeTab === 'coloring' && {
+                      ...styles.tabActive,
+                      borderColor: theme.accent,
+                      shadowColor: theme.accent,
+                    }
+                  ]}
+                  onPress={() => handleTabPress('coloring')}
+                >
+                  <Text style={[
+                    styles.tabText,
+                    activeTab === 'coloring' && {
+                      ...styles.tabTextActive,
+                      color: theme.activeTabColor
+                    }
+                  ]}>
+                    🖍️ Coloring
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -973,6 +1079,92 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 30,
     fontWeight: 'bold',
+  },
+  coloringContainer: {
+    flex: 1,
+    backgroundColor: '#f3f4f6',
+  },
+  coloringHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 15,
+    backgroundColor: '#667eea',
+    position: 'relative',
+  },
+  coloringCloseButton: {
+    position: 'absolute',
+    left: 15,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  coloringTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#ffffff',
+  },
+  coloringImageContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+    backgroundColor: '#ffffff',
+  },
+  coloringImage: {
+    width: '100%',
+    height: '100%',
+  },
+  colorPalette: {
+    backgroundColor: '#ffffff',
+    paddingVertical: 20,
+    paddingHorizontal: 10,
+    borderTopWidth: 2,
+    borderTopColor: '#e5e7eb',
+  },
+  paletteTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#2c3e50',
+    marginBottom: 15,
+    paddingHorizontal: 10,
+  },
+  colorRow: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: 10,
+  },
+  colorButton: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  colorEmoji: {
+    fontSize: 24,
+    color: '#ffffff',
+    fontWeight: 'bold',
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  comingSoonText: {
+    textAlign: 'center',
+    marginTop: 15,
+    fontSize: 14,
+    color: '#7f8c8d',
+    fontStyle: 'italic',
   },
   modalOverlay: {
     flex: 1,
