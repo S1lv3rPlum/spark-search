@@ -7,13 +7,14 @@ const PIXABAY_BASE_URL = 'https://pixabay.com/api/';
 export const searchColoringPages = async (query, page = 1, perPage = 30) => {
   try {
     // Search specifically for coloring page style images
-    const coloringQuery = `${query} coloring page drawing outline`;
+    const coloringQuery = query;
+console.log('🔍 Coloring query:', coloringQuery);
     
     const response = await axios.get(PIXABAY_BASE_URL, {
       params: {
         key: PIXABAY_API_KEY,
         q: coloringQuery,
-        image_type: 'vector', // Vectors work better for coloring pages
+        image_type: 'vector',
         per_page: perPage,
         page: page,
         safesearch: 'true',
