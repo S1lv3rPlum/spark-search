@@ -60,6 +60,8 @@ export default function App() {
   // Coloring page state
   const [showColoringCanvas, setShowColoringCanvas] = useState(false);
   const [selectedColoringImage, setSelectedColoringImage] = useState(null);
+  const [selectedColor, setSelectedColor] = useState('#FF6B6B');
+  const [isDrawing, setIsDrawing] = useState(false);
 
   const theme = THEMES[currentTheme];
 
@@ -71,11 +73,10 @@ export default function App() {
   }, [loading]);
 
   const handleSearch = async () => {
-  if (searchText.trim()) {
-    const term = searchText.trim();
-    
-    console.log('🔍 Search started:', { term, activeTab });
+    if (searchText.trim()) {
+      const term = searchText.trim();
       
+      console.log('🔍 Search started:', { term, activeTab });
       
       // Check if search term is safe
       if (!isSearchTermSafe(term)) {
@@ -106,23 +107,6 @@ export default function App() {
             // No results at all - show suggestions
             const suggestions = getSearchSuggestions(term);
             setError(`No images found for "${term}". Try: ${suggestions.slice(0, 3).join(', ')}`);
-            setScreen('home');
-          } else {
-            setImages(result.images);
-            setHasMore(result.hasMore);
-            setScreen('results');
-          }
-        } else if (activeTab === 'coloring') {
-          console.log('🖍️ Searching for coloring pages...');
-          const result = await searchColoringPages(term, 1);
-          console.log('🖍️ Result:', result);
-          
-          if (result.images.length === 0 && result.filteredCount > 0) {
-            setError('All results were filtered for safety. Try a different search!');
-            setScreen('home');
-          } else if (result.images.length === 0) {
-            const suggestions = getSearchSuggestions(term);
-            setError(`No coloring pages found for "${term}". Try: ${suggestions.slice(0, 3).join(', ')}`);
             setScreen('home');
           } else {
             setImages(result.images);
@@ -237,6 +221,11 @@ export default function App() {
   const handleCloseColoringCanvas = () => {
     setShowColoringCanvas(false);
     setSelectedColoringImage(null);
+    setSelectedColor('#FF6B6B');
+  };
+
+  const handleColorSelect = (color) => {
+    setSelectedColor(color);
   };
 
   const handleCloseImageViewer = () => {
@@ -448,19 +437,32 @@ export default function App() {
                     '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E2',
                     '#F8B4D9', '#B4E7CE', '#FFB6B9', '#A8E6CF',
                     '#FFDAC1', '#FF8B94', '#C7CEEA', '#B5EAD7',
+                    '#FFFFFF', '#000000',
                   ].map((color, index) => (
                     <TouchableOpacity
                       key={index}
-                      style={[styles.colorButton, { backgroundColor: color }]}
+                      style={[
+                        styles.colorButton,
+                        { backgroundColor: color },
+                        selectedColor === color && styles.colorButtonSelected,
+                      ]}
+                      onPress={() => handleColorSelect(color)}
                     >
-                      <Text style={styles.colorEmoji}>✓</Text>
+                      {selectedColor === color && (
+                        <Text style={styles.colorEmoji}>✓</Text>
+                      )}
                     </TouchableOpacity>
                   ))}
                 </View>
               </ScrollView>
-              <Text style={styles.comingSoonText}>
-                🎨 Full coloring tools coming soon! Tap colors to preview.
-              </Text>
+              <View style={styles.coloringInstructions}>
+                <Text style={styles.instructionText}>
+                  🖌️ Tap a color, then tap the picture to paint!
+                </Text>
+                <Text style={styles.instructionSubtext}>
+                  Coming soon: Brush size, eraser, and save image
+                </Text>
+              </View>
             </View>
           </View>
         </Modal>
@@ -1164,25 +1166,32 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 3,
-    borderColor: '#fff',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
+    borderColor: '#e5e7eb',
+  },
+  colorButtonSelected: {
+    borderColor: '#2c3e50',
+    borderWidth: 4,
+    transform: [{ scale: 1.1 }],
   },
   colorEmoji: {
-    fontSize: 24,
+    fontSize: 28,
     color: '#ffffff',
     fontWeight: 'bold',
-    textShadowColor: 'rgba(0, 0, 0, 0.3)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
   },
-  comingSoonText: {
-    textAlign: 'center',
+  coloringInstructions: {
     marginTop: 15,
-    fontSize: 14,
+    paddingHorizontal: 10,
+  },
+  instructionText: {
+    textAlign: 'center',
+    fontSize: 16,
+    color: '#2c3e50',
+    fontWeight: '600',
+    marginBottom: 5,
+  },
+  instructionSubtext: {
+    textAlign: 'center',
+    fontSize: 13,
     color: '#7f8c8d',
     fontStyle: 'italic',
   },
