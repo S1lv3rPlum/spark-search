@@ -497,6 +497,15 @@ export default function App() {
           
           <View style={styles.topBar}>
             <TouchableOpacity
+              style={[styles.parentsButton, { borderColor: theme.tabBorder }]}
+              disabled
+              accessibilityState={{ disabled: true }}
+              accessibilityLabel="Parent dashboard, coming soon"
+            >
+              <Text style={styles.parentsButtonText}>🔒 Parents</Text>
+              <Text style={styles.parentsButtonSoon}>Coming soon</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
               style={[styles.themeButton, { borderColor: theme.accent }]}
               onPress={() => setShowThemeModal(true)}
             >
@@ -649,46 +658,32 @@ export default function App() {
                 <TouchableOpacity
                   style={[
                     styles.tab,
+                    styles.tabDisabled,
                     { backgroundColor: theme.buttonBg, borderColor: theme.tabBorder },
-                    activeTab === 'videos' && {
-                      ...styles.tabActive,
-                      borderColor: theme.accent,
-                      shadowColor: theme.accent,
-                    }
                   ]}
-                  onPress={() => handleTabPress('videos')}
+                  disabled
+                  accessibilityState={{ disabled: true }}
+                  accessibilityLabel="Videos, coming soon"
                 >
-                  <Text style={[
-                    styles.tabText,
-                    activeTab === 'videos' && {
-                      ...styles.tabTextActive,
-                      color: theme.activeTabColor
-                    }
-                  ]}>
+                  <Text style={styles.tabText}>
                     🎬 Videos
                   </Text>
+                  <Text style={styles.tabSoonText}>Coming soon</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[
                     styles.tab,
+                    styles.tabDisabled,
                     { backgroundColor: theme.buttonBg, borderColor: theme.tabBorder },
-                    activeTab === 'songs' && {
-                      ...styles.tabActive,
-                      borderColor: theme.accent,
-                      shadowColor: theme.accent,
-                    }
                   ]}
-                  onPress={() => handleTabPress('songs')}
+                  disabled
+                  accessibilityState={{ disabled: true }}
+                  accessibilityLabel="Songs, coming soon"
                 >
-                  <Text style={[
-                    styles.tabText,
-                    activeTab === 'songs' && {
-                      ...styles.tabTextActive,
-                      color: theme.activeTabColor
-                    }
-                  ]}>
+                  <Text style={styles.tabText}>
                     🎵 Songs
                   </Text>
+                  <Text style={styles.tabSoonText}>Coming soon</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -761,7 +756,7 @@ const styles = StyleSheet.create({
   },
   topBar: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingTop: 10,
   },
@@ -874,13 +869,39 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
   },
+  tabDisabled: {
+    opacity: 0.55,
+  },
+  tabSoonText: {
+    color: '#ffffff',
+    fontSize: 10,
+    marginTop: 2,
+  },
+  parentsButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderWidth: 2,
+    alignItems: 'center',
+    opacity: 0.6,
+  },
+  parentsButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  parentsButtonSoon: {
+    color: '#ffffff',
+    fontSize: 10,
+  },
   tabActive: {
     backgroundColor: '#ffffff',
     borderWidth: 2,
   },
   tabText: {
     color: '#ffffff',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
   },
   tabTextActive: {
