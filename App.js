@@ -13,15 +13,15 @@ import {
   ScrollView,
   Image,
   ActivityIndicator,
-  Dimensions,
+  useWindowDimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { searchImages } from './services/pixabayAPI';
 import { searchColoringPages } from './services/coloringAPI';
+import ColoringCanvas from './components/ColoringCanvas';
 import { THEMES } from './config/constants';
 import { isSearchTermSafe, getSearchSuggestions } from './services/contentFilter';
 
-const { width } = Dimensions.get('window');
 const LOADING_PHRASES = [
   'Searching the internet for awesome stuff...',
   'Finding the coolest things...',
@@ -36,6 +36,12 @@ const LOADING_PHRASES = [
 ];
 
 export default function App() {
+  const { width: winWidth } = useWindowDimensions();
+  // Responsive grid: centered column on wide screens, 2-4 columns by width
+  const gridWidth = Math.min(winWidth, 960);
+  const columns = winWidth >= 900 ? 4 : winWidth >= 600 ? 3 : 2;
+  const cardSize = (gridWidth - 20 - (columns - 1) * 10) / columns;
+
   const [screen, setScreen] = useState('home');
   const [searchText, setSearchText] = useState('');
   const [currentSearchTerm, setCurrentSearchTerm] = useState('');
@@ -64,6 +70,17 @@ export default function App() {
   const [isDrawing, setIsDrawing] = useState(false);
 
   const theme = THEMES[currentTheme];
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !showImageViewer) return;
+    const onKey = (e) => {
+      if (e.key === 'Escape') setShowImageViewer(false);
+      if (e.key === 'ArrowRight') setSelectedImageIndex((i) => Math.min(i + 1, images.length - 1));
+      if (e.key === 'ArrowLeft') setSelectedImageIndex((i) => Math.max(i - 1, 0));
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showImageViewer, images.length]);
 
   useEffect(() => {
     if (loading) {
@@ -96,8 +113,12 @@ export default function App() {
       }
 
       try {
-        if (activeTab === 'pictures') {
-          const result = await searchImages(term, 1);
+        if (activeTab === 'pictures' || activeTab === 'coloring') {
+          const isColoring = activeTab === 'coloring';
+          const noun = isColoring ? 'coloring pages' : 'images';
+          const result = isColoring
+            ? await searchColoringPages(term, 1)
+            : await searchImages(term, 1);
           
           // If we got results but they were all filtered
           if (result.images.length === 0 && result.filteredCount > 0) {
@@ -106,7 +127,7 @@ export default function App() {
           } else if (result.images.length === 0) {
             // No results at all - show suggestions
             const suggestions = getSearchSuggestions(term);
-            setError(`No images found for "${term}". Try: ${suggestions.slice(0, 3).join(', ')}`);
+            setError(`No ${noun} found for "${term}". Try: ${suggestions.slice(0, 3).join(', ')}`);
             setScreen('home');
           } else {
             setImages(result.images);
@@ -271,7 +292,7 @@ export default function App() {
                 <Text style={styles.backButtonText}>← Back</Text>
               </TouchableOpacity>
               <Text style={styles.resultsTitle}>
-                Results for: {currentSearchTerm}
+                {activeTab === 'coloring' ? '🖍️ Coloring pages' : 'Results'} for: {currentSearchTerm}
               </Text>
             </View>
 
@@ -296,11 +317,11 @@ export default function App() {
                 </View>
               ) : (
                 <>
-                  <View style={styles.imageGrid}>
+                  <View style={[styles.imageGrid, { width: gridWidth - 20, alignSelf: 'center' }]}>
                     {images.map((image) => (
                       <TouchableOpacity
                         key={image.id}
-                        style={styles.imageCard}
+                        style={[styles.imageCard, { width: cardSize, height: cardSize }]}
                         onPress={() => handleImagePress(image)}
                       >
                         <Image
@@ -367,7 +388,7 @@ export default function App() {
             >
               <Image
                 source={{ uri: images[selectedImageIndex]?.url }}
-                style={styles.fullScreenImage}
+                style={[styles.fullScreenImage, { width: winWidth }]}
                 resizeMode="contain"
               />
             </ScrollView>
@@ -420,11 +441,9 @@ export default function App() {
 
             {/* Coloring Image */}
             <View style={styles.coloringImageContainer}>
-              <Image
-                source={{ uri: selectedColoringImage?.url }}
-                style={styles.coloringImage}
-                resizeMode="contain"
-              />
+              {selectedColoringImage && (
+                <ColoringCanvas uri={selectedColoringImage.url} color={selectedColor} />
+              )}
             </View>
 
             {/* Color Palette */}
@@ -457,10 +476,10 @@ export default function App() {
               </ScrollView>
               <View style={styles.coloringInstructions}>
                 <Text style={styles.instructionText}>
-                  🖌️ Tap a color, then tap the picture to paint!
+                  🖌️ Tap a color, then tap a space in the picture to fill it!
                 </Text>
                 <Text style={styles.instructionSubtext}>
-                  Coming soon: Brush size, eraser, and save image
+                  Made a mistake? Tap Undo. Happy with it? Tap Save!
                 </Text>
               </View>
             </View>
@@ -533,6 +552,12 @@ export default function App() {
                 </TouchableOpacity>
               </View>
             </View>
+
+            {error && (
+              <View style={styles.homeErrorContainer}>
+                <Text style={styles.homeErrorText}>😕 {error}</Text>
+              </View>
+            )}
 
             {/* Autocomplete Suggestions */}
             {showAutocomplete && autocompleteSuggestions.length > 0 && (
@@ -755,6 +780,9 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 20,
+    width: '100%',
+    maxWidth: 640,
+    alignSelf: 'center',
   },
   header: {
     alignItems: 'center',
@@ -988,12 +1016,10 @@ const styles = StyleSheet.create({
   imageGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    gap: 10,
   },
   imageCard: {
-    width: (width - 30) / 2,
-    height: (width - 30) / 2,
-    marginBottom: 10,
+    borderRadius: 12,
     borderRadius: 12,
     overflow: 'hidden',
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
@@ -1074,7 +1100,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   fullScreenImage: {
-    width: width,
     height: '100%',
   },
   imageNavigation: {
