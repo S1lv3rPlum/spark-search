@@ -13,14 +13,15 @@ import {
   ScrollView,
   Image,
   ActivityIndicator,
-  Dimensions,
+  useWindowDimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { searchImages } from './services/pixabayAPI';
+import { searchColoringPages } from './services/coloringAPI';
+import ColoringCanvas from './components/ColoringCanvas';
 import { THEMES } from './config/constants';
 import { isSearchTermSafe, getSearchSuggestions } from './services/contentFilter';
 
-const { width } = Dimensions.get('window');
 const LOADING_PHRASES = [
   'Searching the internet for awesome stuff...',
   'Finding the coolest things...',
@@ -35,6 +36,12 @@ const LOADING_PHRASES = [
 ];
 
 export default function App() {
+  const { width: winWidth } = useWindowDimensions();
+  // Responsive grid: centered column on wide screens, 2-4 columns by width
+  const gridWidth = Math.min(winWidth, 960);
+  const columns = winWidth >= 900 ? 4 : winWidth >= 600 ? 3 : 2;
+  const cardSize = (gridWidth - 20 - (columns - 1) * 10) / columns;
+
   const [screen, setScreen] = useState('home');
   const [searchText, setSearchText] = useState('');
   const [currentSearchTerm, setCurrentSearchTerm] = useState('');
@@ -55,8 +62,25 @@ export default function App() {
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [showAutocomplete, setShowAutocomplete] = useState(false);
   const [autocompleteSuggestions, setAutocompleteSuggestions] = useState([]);
+  
+  // Coloring page state
+  const [showColoringCanvas, setShowColoringCanvas] = useState(false);
+  const [selectedColoringImage, setSelectedColoringImage] = useState(null);
+  const [selectedColor, setSelectedColor] = useState('#FF6B6B');
+  const [isDrawing, setIsDrawing] = useState(false);
 
   const theme = THEMES[currentTheme];
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !showImageViewer) return;
+    const onKey = (e) => {
+      if (e.key === 'Escape') setShowImageViewer(false);
+      if (e.key === 'ArrowRight') setSelectedImageIndex((i) => Math.min(i + 1, images.length - 1));
+      if (e.key === 'ArrowLeft') setSelectedImageIndex((i) => Math.max(i - 1, 0));
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showImageViewer, images.length]);
 
   useEffect(() => {
     if (loading) {
@@ -68,6 +92,8 @@ export default function App() {
   const handleSearch = async () => {
     if (searchText.trim()) {
       const term = searchText.trim();
+      
+      console.log('🔍 Search started:', { term, activeTab });
       
       // Check if search term is safe
       if (!isSearchTermSafe(term)) {
@@ -87,8 +113,12 @@ export default function App() {
       }
 
       try {
-        if (activeTab === 'pictures') {
-          const result = await searchImages(term, 1);
+        if (activeTab === 'pictures' || activeTab === 'coloring') {
+          const isColoring = activeTab === 'coloring';
+          const noun = isColoring ? 'coloring pages' : 'images';
+          const result = isColoring
+            ? await searchColoringPages(term, 1)
+            : await searchImages(term, 1);
           
           // If we got results but they were all filtered
           if (result.images.length === 0 && result.filteredCount > 0) {
@@ -97,7 +127,7 @@ export default function App() {
           } else if (result.images.length === 0) {
             // No results at all - show suggestions
             const suggestions = getSearchSuggestions(term);
-            setError(`No images found for "${term}". Try: ${suggestions.slice(0, 3).join(', ')}`);
+            setError(`No ${noun} found for "${term}". Try: ${suggestions.slice(0, 3).join(', ')}`);
             setScreen('home');
           } else {
             setImages(result.images);
@@ -123,10 +153,19 @@ export default function App() {
     setLoadingMore(true);
     try {
       const nextPage = currentPage + 1;
-      const result = await searchImages(currentSearchTerm, nextPage);
-      setImages([...images, ...result.images]);
-      setCurrentPage(nextPage);
-      setHasMore(result.hasMore);
+      let result;
+      
+      if (activeTab === 'pictures') {
+        result = await searchImages(currentSearchTerm, nextPage);
+      } else if (activeTab === 'coloring') {
+        result = await searchColoringPages(currentSearchTerm, nextPage);
+      }
+      
+      if (result) {
+        setImages([...images, ...result.images]);
+        setCurrentPage(nextPage);
+        setHasMore(result.hasMore);
+      }
     } catch (err) {
       console.error('Error loading more images:', err);
     } finally {
@@ -170,6 +209,8 @@ export default function App() {
 
   const handleTabPress = (tab) => {
     setActiveTab(tab);
+    // Clear autocomplete when switching tabs
+    setShowAutocomplete(false);
   };
 
   const handleThemeChange = (themeName) => {
@@ -186,9 +227,26 @@ export default function App() {
   };
 
   const handleImagePress = (image) => {
-    const index = images.findIndex(img => img.id === image.id);
-    setSelectedImageIndex(index);
-    setShowImageViewer(true);
+    // If it's a coloring page, open coloring canvas
+    if (activeTab === 'coloring' || image.isColoringPage) {
+      setSelectedColoringImage(image);
+      setShowColoringCanvas(true);
+    } else {
+      // Regular image viewer
+      const index = images.findIndex(img => img.id === image.id);
+      setSelectedImageIndex(index);
+      setShowImageViewer(true);
+    }
+  };
+
+  const handleCloseColoringCanvas = () => {
+    setShowColoringCanvas(false);
+    setSelectedColoringImage(null);
+    setSelectedColor('#FF6B6B');
+  };
+
+  const handleColorSelect = (color) => {
+    setSelectedColor(color);
   };
 
   const handleCloseImageViewer = () => {
@@ -234,7 +292,7 @@ export default function App() {
                 <Text style={styles.backButtonText}>← Back</Text>
               </TouchableOpacity>
               <Text style={styles.resultsTitle}>
-                Results for: {currentSearchTerm}
+                {activeTab === 'coloring' ? '🖍️ Coloring pages' : 'Results'} for: {currentSearchTerm}
               </Text>
             </View>
 
@@ -259,11 +317,11 @@ export default function App() {
                 </View>
               ) : (
                 <>
-                  <View style={styles.imageGrid}>
+                  <View style={[styles.imageGrid, { width: gridWidth - 20, alignSelf: 'center' }]}>
                     {images.map((image) => (
                       <TouchableOpacity
                         key={image.id}
-                        style={styles.imageCard}
+                        style={[styles.imageCard, { width: cardSize, height: cardSize }]}
                         onPress={() => handleImagePress(image)}
                       >
                         <Image
@@ -330,7 +388,7 @@ export default function App() {
             >
               <Image
                 source={{ uri: images[selectedImageIndex]?.url }}
-                style={styles.fullScreenImage}
+                style={[styles.fullScreenImage, { width: winWidth }]}
                 resizeMode="contain"
               />
             </ScrollView>
@@ -360,6 +418,73 @@ export default function App() {
             </View>
           </View>
         </Modal>
+        
+        {/* Coloring Canvas Modal */}
+        <Modal
+          visible={showColoringCanvas}
+          transparent={false}
+          animationType="slide"
+          onRequestClose={handleCloseColoringCanvas}
+        >
+          <View style={styles.coloringContainer}>
+            <StatusBar barStyle="light-content" backgroundColor="#000000" />
+            
+            <SafeAreaView style={styles.coloringHeader}>
+              <TouchableOpacity 
+                style={styles.coloringCloseButton}
+                onPress={handleCloseColoringCanvas}
+              >
+                <Text style={styles.closeViewerText}>✕</Text>
+              </TouchableOpacity>
+              <Text style={styles.coloringTitle}>🎨 Color Me!</Text>
+            </SafeAreaView>
+
+            {/* Coloring Image */}
+            <View style={styles.coloringImageContainer}>
+              {selectedColoringImage && (
+                <ColoringCanvas uri={selectedColoringImage.url} color={selectedColor} />
+              )}
+            </View>
+
+            {/* Color Palette */}
+            <View style={styles.colorPalette}>
+              <Text style={styles.paletteTitle}>Pick a Color:</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={styles.colorRow}>
+                  {[
+                    '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A',
+                    '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E2',
+                    '#F8B4D9', '#B4E7CE', '#FFB6B9', '#A8E6CF',
+                    '#FFDAC1', '#FF8B94', '#C7CEEA', '#B5EAD7',
+                    '#FFFFFF', '#000000',
+                  ].map((color, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      style={[
+                        styles.colorButton,
+                        { backgroundColor: color },
+                        selectedColor === color && styles.colorButtonSelected,
+                      ]}
+                      onPress={() => handleColorSelect(color)}
+                    >
+                      {selectedColor === color && (
+                        <Text style={styles.colorEmoji}>✓</Text>
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
+              <View style={styles.coloringInstructions}>
+                <Text style={styles.instructionText}>
+                  🖌️ Tap a color, then tap a space in the picture to fill it!
+                </Text>
+                <Text style={styles.instructionSubtext}>
+                  Made a mistake? Tap Undo. Happy with it? Tap Save!
+                </Text>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </View>
     );
   }
@@ -371,6 +496,15 @@ export default function App() {
           <StatusBar barStyle="light-content" backgroundColor={theme.gradient[0]} />
           
           <View style={styles.topBar}>
+            <TouchableOpacity
+              style={[styles.parentsButton, { borderColor: theme.tabBorder }]}
+              disabled
+              accessibilityState={{ disabled: true }}
+              accessibilityLabel="Parent dashboard, coming soon"
+            >
+              <Text style={styles.parentsButtonText}>🔒 Parents</Text>
+              <Text style={styles.parentsButtonSoon}>Coming soon</Text>
+            </TouchableOpacity>
             <TouchableOpacity
               style={[styles.themeButton, { borderColor: theme.accent }]}
               onPress={() => setShowThemeModal(true)}
@@ -427,6 +561,12 @@ export default function App() {
                 </TouchableOpacity>
               </View>
             </View>
+
+            {error && (
+              <View style={styles.homeErrorContainer}>
+                <Text style={styles.homeErrorText}>😕 {error}</Text>
+              </View>
+            )}
 
             {/* Autocomplete Suggestions */}
             {showAutocomplete && autocompleteSuggestions.length > 0 && (
@@ -497,45 +637,53 @@ export default function App() {
                   style={[
                     styles.tab,
                     { backgroundColor: theme.buttonBg, borderColor: theme.tabBorder },
-                    activeTab === 'videos' && {
+                    activeTab === 'coloring' && {
                       ...styles.tabActive,
                       borderColor: theme.accent,
                       shadowColor: theme.accent,
                     }
                   ]}
-                  onPress={() => handleTabPress('videos')}
+                  onPress={() => handleTabPress('coloring')}
                 >
                   <Text style={[
                     styles.tabText,
-                    activeTab === 'videos' && {
+                    activeTab === 'coloring' && {
                       ...styles.tabTextActive,
                       color: theme.activeTabColor
                     }
                   ]}>
-                    🎬 Videos
+                    🖍️ Coloring
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[
                     styles.tab,
+                    styles.tabDisabled,
                     { backgroundColor: theme.buttonBg, borderColor: theme.tabBorder },
-                    activeTab === 'songs' && {
-                      ...styles.tabActive,
-                      borderColor: theme.accent,
-                      shadowColor: theme.accent,
-                    }
                   ]}
-                  onPress={() => handleTabPress('songs')}
+                  disabled
+                  accessibilityState={{ disabled: true }}
+                  accessibilityLabel="Videos, coming soon"
                 >
-                  <Text style={[
-                    styles.tabText,
-                    activeTab === 'songs' && {
-                      ...styles.tabTextActive,
-                      color: theme.activeTabColor
-                    }
-                  ]}>
+                  <Text style={styles.tabText}>
+                    🎬 Videos
+                  </Text>
+                  <Text style={styles.tabSoonText}>Coming soon</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.tab,
+                    styles.tabDisabled,
+                    { backgroundColor: theme.buttonBg, borderColor: theme.tabBorder },
+                  ]}
+                  disabled
+                  accessibilityState={{ disabled: true }}
+                  accessibilityLabel="Songs, coming soon"
+                >
+                  <Text style={styles.tabText}>
                     🎵 Songs
                   </Text>
+                  <Text style={styles.tabSoonText}>Coming soon</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -608,7 +756,7 @@ const styles = StyleSheet.create({
   },
   topBar: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingTop: 10,
   },
@@ -627,6 +775,9 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 20,
+    width: '100%',
+    maxWidth: 640,
+    alignSelf: 'center',
   },
   header: {
     alignItems: 'center',
@@ -718,13 +869,39 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
   },
+  tabDisabled: {
+    opacity: 0.55,
+  },
+  tabSoonText: {
+    color: '#ffffff',
+    fontSize: 10,
+    marginTop: 2,
+  },
+  parentsButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderWidth: 2,
+    alignItems: 'center',
+    opacity: 0.6,
+  },
+  parentsButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  parentsButtonSoon: {
+    color: '#ffffff',
+    fontSize: 10,
+  },
   tabActive: {
     backgroundColor: '#ffffff',
     borderWidth: 2,
   },
   tabText: {
     color: '#ffffff',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
   },
   tabTextActive: {
@@ -860,12 +1037,10 @@ const styles = StyleSheet.create({
   imageGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    gap: 10,
   },
   imageCard: {
-    width: (width - 30) / 2,
-    height: (width - 30) / 2,
-    marginBottom: 10,
+    borderRadius: 12,
     borderRadius: 12,
     overflow: 'hidden',
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
@@ -946,7 +1121,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   fullScreenImage: {
-    width: width,
     height: '100%',
   },
   imageNavigation: {
@@ -973,6 +1147,99 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 30,
     fontWeight: 'bold',
+  },
+  coloringContainer: {
+    flex: 1,
+    backgroundColor: '#f3f4f6',
+  },
+  coloringHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 15,
+    backgroundColor: '#667eea',
+    position: 'relative',
+  },
+  coloringCloseButton: {
+    position: 'absolute',
+    left: 15,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  coloringTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#ffffff',
+  },
+  coloringImageContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+    backgroundColor: '#ffffff',
+  },
+  coloringImage: {
+    width: '100%',
+    height: '100%',
+  },
+  colorPalette: {
+    backgroundColor: '#ffffff',
+    paddingVertical: 20,
+    paddingHorizontal: 10,
+    borderTopWidth: 2,
+    borderTopColor: '#e5e7eb',
+  },
+  paletteTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#2c3e50',
+    marginBottom: 15,
+    paddingHorizontal: 10,
+  },
+  colorRow: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: 10,
+  },
+  colorButton: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: '#e5e7eb',
+  },
+  colorButtonSelected: {
+    borderColor: '#2c3e50',
+    borderWidth: 4,
+    transform: [{ scale: 1.1 }],
+  },
+  colorEmoji: {
+    fontSize: 28,
+    color: '#ffffff',
+    fontWeight: 'bold',
+  },
+  coloringInstructions: {
+    marginTop: 15,
+    paddingHorizontal: 10,
+  },
+  instructionText: {
+    textAlign: 'center',
+    fontSize: 16,
+    color: '#2c3e50',
+    fontWeight: '600',
+    marginBottom: 5,
+  },
+  instructionSubtext: {
+    textAlign: 'center',
+    fontSize: 13,
+    color: '#7f8c8d',
+    fontStyle: 'italic',
   },
   modalOverlay: {
     flex: 1,
