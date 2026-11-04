@@ -4,26 +4,29 @@ import { filterImages } from './contentFilter';
 
 const PIXABAY_BASE_URL = 'https://pixabay.com/api/';
 
+const fetchVectors = (q, page, perPage) =>
+  axios.get(PIXABAY_BASE_URL, {
+    params: {
+      key: PIXABAY_API_KEY,
+      q,
+      image_type: 'vector',
+      per_page: perPage,
+      page,
+      safesearch: 'true',
+    },
+  });
+
 export const searchColoringPages = async (query, page = 1, perPage = 30) => {
   try {
-    // Search specifically for coloring page style images
-    const coloringQuery = query;
-console.log('🔍 Coloring query:', coloringQuery);
-    
-    const response = await axios.get(PIXABAY_BASE_URL, {
-      params: {
-        key: PIXABAY_API_KEY,
-        q: coloringQuery,
-        image_type: 'vector',
-        per_page: perPage,
-        page: page,
-        safesearch: 'true',
-        editors_choice: 'false',
-        category: 'education', // Often has line art
-      },
-    });
+    // Ask for line-art style first; if that finds nothing, fall back to the plain term
+    let response = await fetchVectors(`${query} coloring page`, page, perPage);
+    if (response.data.hits.length === 0 && page === 1) {
+      response = await fetchVectors(`${query} outline`, page, perPage);
+    }
+    if (response.data.hits.length === 0 && page === 1) {
+      response = await fetchVectors(query, page, perPage);
+    }
 
-    // Transform response
     const images = response.data.hits.map(hit => ({
       id: hit.id,
       url: hit.largeImageURL,
@@ -34,10 +37,6 @@ console.log('🔍 Coloring query:', coloringQuery);
     }));
 
     const { filtered, blockedCount } = filterImages(images);
-
-    if (blockedCount > 0) {
-      console.log(`🎨 Filtered ${blockedCount} coloring page images for "${query}"`);
-    }
 
     return {
       images: filtered,
