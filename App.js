@@ -19,6 +19,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { searchImages } from './services/pixabayAPI';
 import { searchColoringPages } from './services/coloringAPI';
 import ColoringCanvas from './components/ColoringCanvas';
+import ParentScreen from './components/ParentScreen';
+import {
+  initParentControls, isBlockedByParent, filterByParentWords, logSearch,
+} from './services/parentControls';
 import { THEMES } from './config/constants';
 import { isSearchTermSafe, getSearchSuggestions } from './services/contentFilter';
 
@@ -71,6 +75,8 @@ export default function App() {
 
   const theme = THEMES[currentTheme];
 
+  useEffect(() => initParentControls(), []);
+
   useEffect(() => {
     if (Platform.OS !== 'web' || !showImageViewer) return;
     const onKey = (e) => {
@@ -96,12 +102,14 @@ export default function App() {
       console.log('🔍 Search started:', { term, activeTab });
       
       // Check if search term is safe
-      if (!isSearchTermSafe(term)) {
+      if (!isSearchTermSafe(term) || isBlockedByParent(term)) {
+        logSearch(term, activeTab, true);
         alert('⚠️ Please try a different search term!');
         setSearchText('');
         return;
       }
       
+      logSearch(term, activeTab, false);
       setCurrentSearchTerm(term);
       setLoading(true);
       setError(null);
@@ -120,6 +128,10 @@ export default function App() {
             ? await searchColoringPages(term, 1)
             : await searchImages(term, 1);
           
+          const beforeParent = result.images.length;
+          result.images = filterByParentWords(result.images);
+          if (beforeParent > 0 && result.images.length === 0) result.filteredCount = beforeParent;
+
           // If we got results but they were all filtered
           if (result.images.length === 0 && result.filteredCount > 0) {
             setError('All results were filtered for safety. Try a different search!');
@@ -162,7 +174,7 @@ export default function App() {
       }
       
       if (result) {
-        setImages([...images, ...result.images]);
+        setImages([...images, ...filterByParentWords(result.images)]);
         setCurrentPage(nextPage);
         setHasMore(result.hasMore);
       }
@@ -278,6 +290,10 @@ export default function App() {
         </LinearGradient>
       </View>
     );
+  }
+
+  if (screen === 'parents') {
+    return <ParentScreen onClose={() => setScreen('home')} />;
   }
 
   if (screen === 'results') {
@@ -497,13 +513,11 @@ export default function App() {
           
           <View style={styles.topBar}>
             <TouchableOpacity
-              style={[styles.parentsButton, { borderColor: theme.tabBorder }]}
-              disabled
-              accessibilityState={{ disabled: true }}
-              accessibilityLabel="Parent dashboard, coming soon"
+              style={[styles.parentsButton, { borderColor: theme.accent, opacity: 1 }]}
+              onPress={() => setScreen('parents')}
+              accessibilityLabel="Parent area"
             >
               <Text style={styles.parentsButtonText}>🔒 Parents</Text>
-              <Text style={styles.parentsButtonSoon}>Coming soon</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.themeButton, { borderColor: theme.accent }]}
