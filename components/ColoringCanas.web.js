@@ -11,6 +11,8 @@ export default function ColoringCanvas({ uri, color }) {
   const undoRef = useRef([]);
   const [status, setStatus] = useState('loading'); // loading | ready | error
   const [undoCount, setUndoCount] = useState(0);
+  const [hint, setHint] = useState('');
+  const hintTimer = useRef(null);
 
   useEffect(() => {
     setStatus('loading');
@@ -48,11 +50,17 @@ export default function ColoringCanvas({ uri, color }) {
     const y = Math.floor(((e.clientY - rect.top) * canvas.height) / rect.height);
     const before = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const work = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    if (floodFill(work, x, y, hexToRgb(color))) {
+    const result = floodFill(work, x, y, hexToRgb(color), originalRef.current);
+    if (result === 'filled') {
       undoRef.current.push(before);
       if (undoRef.current.length > MAX_UNDO) undoRef.current.shift();
       setUndoCount(undoRef.current.length);
       ctx.putImageData(work, 0, 0);
+      setHint('');
+    } else if (result === 'line') {
+      setHint('Tap inside a space, not on a black line!');
+      clearTimeout(hintTimer.current);
+      hintTimer.current = setTimeout(() => setHint(''), 2500);
     }
   };
 
@@ -99,6 +107,7 @@ export default function ColoringCanvas({ uri, color }) {
           </TouchableOpacity>
         </View>
       )}
+      {status === 'ready' && hint !== '' && <Text style={styles.hint}>{hint}</Text>}
       {status === 'loading' && <Text style={styles.message}>Getting your page ready…</Text>}
       {status === 'error' && (
         <>
@@ -136,5 +145,6 @@ const styles = StyleSheet.create({
   },
   toolDisabled: { opacity: 0.4 },
   toolText: { color: '#ffffff', fontSize: 15, fontWeight: '600' },
+  hint: { fontSize: 14, color: '#b45309', marginBottom: 8, textAlign: 'center', fontWeight: '600' },
   message: { fontSize: 16, color: '#2c3e50', marginBottom: 12, textAlign: 'center' },
 });
