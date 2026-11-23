@@ -1,9 +1,13 @@
 // Tap-to-fill for coloring pages. Pure function over ImageData-like objects
 // ({ width, height, data: Uint8ClampedArray RGBA }) so it can be tested without a browser.
+//
+// Regions are worked out from the ORIGINAL artwork (`source`), and the color is painted onto
+// the current canvas (`target`). That way a region you already colored never merges with its
+// neighbors, even if they happen to be the same color.
 
 const TOLERANCE = 120; // sum of |dR|+|dG|+|dB| allowed vs. the tapped pixel
-const LINE_LUMA = 70; // tapped pixels darker than this count as outline: ignore
-const EDGE_LUMA = 100; // anti-aliased edge pixels lighter than this get tinted too
+const LINE_LUMA = 140; // tapped pixels darker than this count as outline: ignore the tap
+const EDGE_LUMA = 170; // only anti-aliased pixels lighter than this get tinted by the 1px grow
 
 export const hexToRgb = (hex) => {
   const n = parseInt(hex.replace('#', ''), 16);
@@ -12,28 +16,30 @@ export const hexToRgb = (hex) => {
 
 const luma = (d, i) => d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114;
 
-// Returns true if any pixels changed.
-export function floodFill(imageData, x, y, rgb) {
-  const { width, height, data } = imageData;
-  if (x < 0 || y < 0 || x >= width || y >= height) return false;
+// Returns 'filled', 'line' (tapped an outline) or 'same' (already that color).
+export function floodFill(target, x, y, rgb, source = target) {
+  const { width, height } = source;
+  const src = source.data;
+  const dst = target.data;
+  if (x < 0 || y < 0 || x >= width || y >= height) return 'line';
   const [r, g, b] = rgb;
   const start = (y * width + x) * 4;
-  const tr = data[start], tg = data[start + 1], tb = data[start + 2];
+  const tr = src[start], tg = src[start + 1], tb = src[start + 2];
 
-  if (luma(data, start) < LINE_LUMA) return false; // tapped an outline
-  if (tr === r && tg === g && tb === b) return false; // already this color
+  if (luma(src, start) < LINE_LUMA) return 'line';
+  if (dst[start] === r && dst[start + 1] === g && dst[start + 2] === b) return 'same';
 
   const visited = new Uint8Array(width * height);
   const match = (px, py) => {
     const i = (py * width + px) * 4;
     return (
       !visited[py * width + px] &&
-      Math.abs(data[i] - tr) + Math.abs(data[i + 1] - tg) + Math.abs(data[i + 2] - tb) <= TOLERANCE
+      Math.abs(src[i] - tr) + Math.abs(src[i + 1] - tg) + Math.abs(src[i + 2] - tb) <= TOLERANCE
     );
   };
   const paint = (px, py) => {
     const i = (py * width + px) * 4;
-    data[i] = r; data[i + 1] = g; data[i + 2] = b; data[i + 3] = 255;
+    dst[i] = r; dst[i + 1] = g; dst[i + 2] = b; dst[i + 3] = 255;
     visited[py * width + px] = 1;
   };
 
@@ -59,6 +65,7 @@ export function floodFill(imageData, x, y, rgb) {
   }
 
   // One-pixel grow into light anti-aliased edge pixels so no white halo is left by the outline.
+  // Pixels dark enough to be part of the line itself are never touched.
   const grow = [];
   for (let py = 0; py < height; py++) {
     for (let px = 0; px < width; px++) {
@@ -67,14 +74,13 @@ export function floodFill(imageData, x, y, rgb) {
         const nx = px + dx, ny = py + dy;
         if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
         if (visited[ny * width + nx]) continue;
-        if (luma(data, (ny * width + nx) * 4) > EDGE_LUMA) grow.push(nx, ny);
+        if (luma(src, (ny * width + nx) * 4) > EDGE_LUMA) grow.push(nx, ny);
       }
     }
   }
   for (let k = 0; k < grow.length; k += 2) {
     const i = (grow[k + 1] * width + grow[k]) * 4;
-    // Only tint pixels that are still light; leave real outline pixels alone
-    data[i] = r; data[i + 1] = g; data[i + 2] = b; data[i + 3] = 255;
+    dst[i] = r; dst[i + 1] = g; dst[i + 2] = b; dst[i + 3] = 255;
   }
-  return true;
+  return 'filled';
 }
