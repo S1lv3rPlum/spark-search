@@ -1,0 +1,70 @@
+
+    function signedIn() { return request.auth != null; }
+
+    // A real parent account (email/password), not an anonymous kid device
+    function isParent(pid) {
+      return signedIn()
+        && request.auth.uid == pid
+        && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+
+    // A kid device that was paired to this parent
+    function isLinkedTo(pid) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/deviceLinks/$(request.auth.uid))
+        && get(/databases/$(database)/documents/deviceLinks/$(request.auth.uid)).data.parentId == pid;
+    }
+
+    match /parents/{pid} {
+      allow read: if isParent(pid) || isLinkedTo(pid);
+      allow create: if isParent(pid) && request.resource.data.plan == 'free';
+      // Parents can never change their own plan; that is set from the console / payment backend
+      allow update: if isParent(pid) && request.resource.data.plan == resource.data.plan;
+
+      match /blockedWords/{wordId} {
+        allow read: if isParent(pid) || isLinkedTo(pid);
+        allow create, update: if isParent(pid)
+          && request.resource.data.keys().hasOnly(['word', 'addedAt'])
+          && request.resource.data.word is string
+          && request.resource.data.word.size() <= 40;
+        allow delete: if isParent(pid);
+      }
+
+      match /searches/{searchId} {
+        allow read, delete: if isParent(pid);
+        // Kid devices can add log entries, but never read, change or delete them
+        allow create: if isLinkedTo(pid)
+          && request.resource.data.keys().hasOnly(['term', 'tab', 'blocked', 'at', 'expireAt'])
+          && request.resource.data.term is string
+          && request.resource.data.term.size() <= 80
+          && request.resource.data.tab in ['pictures', 'coloring', 'videos', 'songs']
+          && request.resource.data.blocked is bool
+          && request.resource.data.at == request.time
+          && request.resource.data.expireAt is timestamp
+          && request.resource.data.expireAt <= request.time + duration.value(91, 'd');
+      }
+    }
+
+    match /deviceLinks/{deviceUid} {
+      allow read: if signedIn()
+        && (request.auth.uid == deviceUid || isParent(resource.data.parentId));
+      allow delete: if isParent(resource.data.parentId);
+      // A device can only link itself, and only with a valid, unexpired pairing code
+      allow create: if signedIn()
+        && request.auth.uid == deviceUid
+        && request.resource.data.keys().hasOnly(['parentId', 'code', 'pairedAt'])
+        && get(/databases/$(database)/documents/pairCodes/$(request.resource.data.code)).data.parentId
+             == request.resource.data.parentId
+        && get(/databases/$(database)/documents/pairCodes/$(request.resource.data.code)).data.expiresAt
+             > request.time;
+    }
+
+    match /pairCodes/{code} {
+      // "get" only: a device must already know the code. Nobody can list or scan codes.
+      allow get: if signedIn();
+      allow create: if isParent(request.resource.data.parentId)
+        && request.resource.data.expiresAt <= request.time + duration.value(15, 'm');
+      allow delete: if isParent(resource.data.parentId);
+    }
+  }
+}
